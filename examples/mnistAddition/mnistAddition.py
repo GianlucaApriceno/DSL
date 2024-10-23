@@ -1,4 +1,3 @@
-# TODO: remove unused libraries: os, random, utils, numpy, torch
 import argparse
 import os
 import pickle
@@ -45,6 +44,10 @@ def visual_addition(args):
     LR = args.lr
     LOAD_CKPT = args.ckpt
 
+    torch.manual_seed(0)
+    random.seed(0)
+    np.random.seed(0)
+
     # Load model and data
     nn = MNIST_Net().to(DEVICE)
     model = MNISTSumModel(nn, EPSILON_SYMBOLS, EPSILON_RULES, device=DEVICE)
@@ -53,9 +56,6 @@ def visual_addition(args):
 
     # Extract rules and generate datasets
     rules = model.get_rules_matrix(eval=True)[1].squeeze()
-    torch.manual_seed(0)
-    random.seed(0)
-    np.random.seed(0)
     train_loader, test_loader, mnist_test_data_tsne, mnist_test_data = get_dataset(BATCH_SIZE, BATCH_SIZE_VAL)
 
     # Compute confusion matrices and visualize
@@ -204,8 +204,7 @@ def experiment_optuna(trial=None):
 
     # Training loop with hyperparameter tuning
     for e in tqdm(range(EPOCHS)):
-        accuracy = train(model, optimizer, loss, train_loader, test_loader, nn, mnist_test_data, e,
-                             run=0, device=DEVICE)
+        accuracy = train(model, optimizer, loss, train_loader, test_loader, nn, mnist_test_data, e, run=0, device=DEVICE)
 
         # Save checkpoint
         if CKPT_SAVE > 0 and e > 0 and e % CKPT_SAVE == 0:

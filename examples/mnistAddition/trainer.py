@@ -1,6 +1,6 @@
 import time
 import torch
-from utils import *
+from utils import test_MNIST, test_sum
 # TODO: remove the following unused libraries: random, numpy, os
 import random
 import numpy as np

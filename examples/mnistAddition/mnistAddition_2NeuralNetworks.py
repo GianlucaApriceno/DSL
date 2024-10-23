@@ -1,4 +1,3 @@
-# TODO: remove unused libraries: utils, numpy, random torch
 import argparse
 import pickle
 from tqdm import tqdm
@@ -140,6 +139,7 @@ def experiment_optuna(trial=None):
     # Initialize models, optimizer, and loss function
     nn = MNIST_Net().to(DEVICE)
     nn2 = MNIST_Net().to(DEVICE)
+    # TODO: consider setting mnist_digit to 20 instead of 10 (default). Better performance?
     model = MNISTSumModel(nn, EPSILON_SYMBOLS, EPSILON_RULES, nn2=nn2, device=DEVICE).to(DEVICE)
     optimizer = madgrad.MADGRAD(
         [{'params': list(model.parameters())[:1]}, {'params': list(model.parameters())[1:], 'lr': 1e-3}], lr=LR)
