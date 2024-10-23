@@ -61,51 +61,6 @@ def swap_rules(rules, p):
     """
     return torch.tensor(rules)[p, :][:, p]
 
-
-def test_MNIST(model, dataset, epoch, folder, num_exp, n_digits, device='cpu'):
-    # TODO: should we remove epoch, folder and num_exp?
-    """
-        Generates a confusion matrix to analyze the model's performance.
-
-        Parameters:
-        -----------
-        model : torch.nn.Module
-            The neural network model to evaluate.
-
-        dataset : DataLoader
-            The dataset to evaluate, containing pairs of (input_data, label).
-
-        n_digits : int
-            The number of unique classes (or digits) in the dataset, used to define the size of the confusion matrix.
-
-        device : str, optional
-            The device on which to run the evaluation (e.g., 'cpu' or 'cuda'). Defaults to 'cpu'.
-
-        Returns:
-        --------
-        confusion : numpy.ndarray
-            A confusion matrix of shape (n_digits, n_digits), where the rows correspond to the true labels and the
-            columns correspond to the predicted labels.
-
-    """
-    confusion = np.zeros((n_digits, n_digits), dtype=np.uint32)  # First index actual, second index predicted
-    N = 0
-    for d, l in dataset:
-        if l < n_digits:
-            N += 1
-            d = Variable(d.unsqueeze(0))
-            d = d.to(device)
-            with torch.no_grad():
-                outputs, _ = model(d)
-                _, out = torch.max(outputs.data, 1)
-                out = out.to(device)
-                c = int(out.squeeze())
-            confusion[l, c] += 1
-    print()
-    print(confusion)
-    return confusion #, p
-
-
 def test_MNIST_visual(model, dataset, n_digits, device='cpu'):
     # TODO: duplicated code?
     """
@@ -148,38 +103,6 @@ def test_MNIST_visual(model, dataset, n_digits, device='cpu'):
     print()
     print(confusion)
     return confusion #, p
-
-
-def test_sum(model, dataloader, device='cpu'):
-    """
-        Evaluates the accuracy of a trained model on a dataset for a task where the model predicts the sum of two input images' labels.
-
-        Parameters:
-        -----------
-        model : torch.nn.Module
-            The (trained) model returning the predicted sum of the two digits.
-        dataloader : DataLoader
-            The DataLoader object containing the dataset. It return batches of tuples, where each tuple contains two input images (`x`, `y`) and a label representing the sum of
-            their corresponding class labels (`l`).
-        device : str, optional
-            The device on which to run the model and data processing (e.g., 'cpu' or 'cuda'). Defaults to 'cpu'.
-
-        Returns:
-        --------
-        accuracy : float
-            The accuracy of the model on the given dataset.
-    """
-    x, y, l = next(iter(dataloader))
-    x = x.to(device)
-    y = y.to(device)
-    l = l.to(device)
-
-    with torch.no_grad():
-        _, prediction = model(x, y, eval=True)
-        prediction.to(device)
-        _, label = torch.max(torch.squeeze(l), 1)
-
-    return torch.sum(label.to(device) == torch.squeeze(prediction)).float() / label.shape[0]
 
 
 def visualize_confusion(confusion, name, indices="0123456789"):
@@ -264,6 +187,177 @@ def visualize_rules(rules, name):
     plt.close()
 
 ###############################
+
+#### MNIST MULTI DIGIT #####
+def test_sum_multi(model, dataloader, squeeze=True, device='cpu'):
+    x, y, l = next(iter(dataloader))
+    x = x.to(device)
+    y = y.to(device)
+    l = l.to(device)
+
+    with torch.no_grad():
+        _, prediction = model(x, y, eval=True)
+        prediction.to(device)
+
+    if squeeze:
+        return torch.sum(torch.all(l.to(device) == torch.squeeze(prediction), dim=1)).float() / l.shape[0]
+    else:
+        return torch.sum(torch.all(l.to(device) == prediction, dim=1)).float() / l.shape[0]
+
+
+def test_sum_multi_single(model, dataloader, device='cpu'):
+    x, y, l = next(iter(dataloader))
+    x = x.to(device)
+    y = y.to(device)
+    l = l.to(device)
+
+    with torch.no_grad():
+        _, prediction = model(x, y, eval=True)
+        prediction.to(device)
+
+    return torch.sum(torch.sum(l.to(device) == torch.squeeze(prediction), dim=1)/l.shape[1]).float() / l.shape[0]
+
+###############################
+
+
+#### MNIST MULTI OP #####
+def test_multiop(model, dataloader, device='cpu'):
+    x, y, a, l = next(iter(dataloader))
+    x = x.to(device)
+    y = y.to(device)
+    a = a.to(device)
+    l = l.to(device)
+
+    with torch.no_grad():
+        _, prediction = model(x, y, a, eval=True)
+        prediction.to(device)
+        _, label = torch.max(torch.squeeze(l), 1)
+    return torch.sum(label == prediction.view(-1)) / label.shape[0]
+
+
+def test_EMNIST(model, emnist_test_data, epoch, folder, num_exp, max_digit=4, device='cpu'):
+    confusion = np.zeros((max_digit, max_digit), dtype=np.uint32)  # First index actual, second index predicted
+    N = 0
+    for d, l in emnist_test_data:
+        if l < max_digit:
+            N += 1
+            d = Variable(d.unsqueeze(0))
+            d = d.to(device)
+            with torch.no_grad():
+                outputs, _ = model(d)
+                _, out = torch.max(outputs.data, 1)
+                c = int(out.squeeze())
+            confusion[l, c] += 1
+    print(confusion)
+    return confusion,
+
+###############################
+
+
+#### VISUAL PARITY #####
+
+def test_parity(model, dataloader, device='cpu'):
+    x, y = next(iter(dataloader))
+    x = x.to(device)
+    y = y.to(device)
+    _, predictions = model(x, eval=True)
+
+    return torch.sum(predictions.view(-1, 1) == y) / x.shape[0]
+
+
+def test_visual_parity(model, dataloader, device='cpu'):
+    x, y = next(iter(dataloader))
+    x = [z.to(device) for z in x]
+    y = y.to(device)
+
+    _, predictions = model(x, eval=True)
+
+    return torch.sum(predictions.view(-1) == y.to(device)) / y.shape[0]
+
+
+#### MNIST ADDITION, MNIST MINUS #####
+def test_sum(model, dataloader, device='cpu'):
+    """
+        Evaluates the accuracy of a trained model on a dataset for a task where the model predicts the sum of two input images' labels.
+
+        Parameters:
+        -----------
+        model : torch.nn.Module
+            The (trained) model returning the predicted sum of the two digits.
+        dataloader : DataLoader
+            The DataLoader object containing the dataset. It return batches of tuples, where each tuple contains two input images (`x`, `y`) and a label representing the sum of
+            their corresponding class labels (`l`).
+        device : str, optional
+            The device on which to run the model and data processing (e.g., 'cpu' or 'cuda'). Defaults to 'cpu'.
+
+        Returns:
+        --------
+        accuracy : float
+            The accuracy of the model on the given dataset.
+    """
+    x, y, l = next(iter(dataloader))
+    x = x.to(device)
+    y = y.to(device)
+    l = l.to(device)
+
+    with torch.no_grad():
+        _, prediction = model(x, y, eval=True)
+        prediction.to(device)
+        _, label = torch.max(torch.squeeze(l), 1)
+
+    return torch.sum(label.to(device) == torch.squeeze(prediction)).float() / label.shape[0]
+
+###############################
+
+
+#### MNIST ADDITION, MNIST MINUS, MNIST MULTI DIGIT, MNIST MULTI OP, VISUAL PARITY#####
+
+def test_MNIST(model, dataset, epoch, folder, num_exp, n_digits, device='cpu'):
+    # TODO: should we remove epoch, folder and num_exp?
+    """
+        Generates a confusion matrix to analyze the model's performance.
+
+        Parameters:
+        -----------
+        model : torch.nn.Module
+            The neural network model to evaluate.
+
+        dataset : DataLoader
+            The dataset to evaluate, containing pairs of (input_data, label).
+
+        n_digits : int
+            The number of unique classes (or digits) in the dataset, used to define the size of the confusion matrix.
+
+        device : str, optional
+            The device on which to run the evaluation (e.g., 'cpu' or 'cuda'). Defaults to 'cpu'.
+
+        Returns:
+        --------
+        confusion : numpy.ndarray
+            A confusion matrix of shape (n_digits, n_digits), where the rows correspond to the true labels and the
+            columns correspond to the predicted labels.
+
+    """
+    confusion = np.zeros((n_digits, n_digits), dtype=np.uint32)  # First index actual, second index predicted
+    N = 0
+    for d, l in dataset:
+        if l < n_digits:
+            N += 1
+            d = Variable(d.unsqueeze(0))
+            d = d.to(device)
+            with torch.no_grad():
+                outputs, _ = model(d)
+                _, out = torch.max(outputs.data, 1)
+                out = out.to(device)
+                c = int(out.squeeze())
+            confusion[l, c] += 1
+    print()
+    print(confusion)
+    return confusion #, p
+
+###############################
+
+# TODO: The following function seems to be unused
 def F1_compute(N, max_digit, confusion):
     print(confusion)
     F1 = 0
@@ -288,101 +382,5 @@ def accuracy_rules(weights, p):
     return
 
 
-def test_EMNIST(model, emnist_test_data, epoch, folder, num_exp, max_digit=4, device='cpu'):
-    confusion = np.zeros((max_digit, max_digit), dtype=np.uint32)  # First index actual, second index predicted
-    N = 0
-    for d, l in emnist_test_data:
-        if l < max_digit:
-            N += 1
-            d = Variable(d.unsqueeze(0))
-            d = d.to(device)
-            with torch.no_grad():
-                outputs, _ = model(d)
-                _, out = torch.max(outputs.data, 1)
-                c = int(out.squeeze())
-            confusion[l, c] += 1
-    print(confusion)
-    return confusion,
 
 
-def test_sum_multi(model, dataloader, squeeze=True, device='cpu'):
-    x, y, l = next(iter(dataloader))
-    x = x.to(device)
-    y = y.to(device)
-    l = l.to(device)
-
-    with torch.no_grad():
-        _, prediction = model(x, y, eval=True)
-        prediction.to(device)
-
-    if squeeze:
-        return torch.sum(torch.all(l.to(device) == torch.squeeze(prediction), dim=1)).float() / l.shape[0]
-    else:
-        return torch.sum(torch.all(l.to(device) == prediction, dim=1)).float() / l.shape[0]
-
-def test_sum_multi_single(model, dataloader, device='cpu'):
-    x, y, l = next(iter(dataloader))
-    x = x.to(device)
-    y = y.to(device)
-    l = l.to(device)
-
-    with torch.no_grad():
-        _, prediction = model(x, y, eval=True)
-        prediction.to(device)
-
-    return torch.sum(torch.sum(l.to(device) == torch.squeeze(prediction), dim=1)/l.shape[1]).float() / l.shape[0]
-
-
-
-def test_parity(model, dataloader, device='cpu'):
-    x, y = next(iter(dataloader))
-    x = x.to(device)
-    y = y.to(device)
-    _, predictions = model(x, eval=True)
-
-    return torch.sum(predictions.view(-1, 1) == y) / x.shape[0]
-
-
-def test_visual_parity(model, dataloader, device='cpu'):
-    x, y = next(iter(dataloader))
-    x = [z.to(device) for z in x]
-    y = y.to(device)
-
-    _, predictions = model(x, eval=True)
-
-    return torch.sum(predictions.view(-1) == y.to(device)) / y.shape[0]
-
-
-def test_multiop(model, dataloader, device='cpu'):
-    x, y, a, l = next(iter(dataloader))
-    x = x.to(device)
-    y = y.to(device)
-    a = a.to(device)
-    l = l.to(device)
-
-    with torch.no_grad():
-        _, prediction = model(x, y, a, eval=True)
-        prediction.to(device)
-        _, label = torch.max(torch.squeeze(l), 1)
-    return torch.sum(label == prediction.view(-1)) / label.shape[0]
-
-
-def visualize_rules(rules, name):
-    fig, ax = plt.subplots(figsize=(7, 7))
-    rules=rules.cpu().numpy().squeeze()
-    cmap = colors.ListedColormap(['#7b68ee'])
-
-    ax.set_xticks([i for i in range(10)])
-    ax.set_yticks([i for i in range(10)])
-    ax.set_yticklabels([i for i in range(10)], rotation=90)
-    ax.invert_xaxis()
-    ax.xaxis.tick_top()
-
-    ax.tick_params(axis='both', which='both', length=0, labelsize=15)
-    ax.imshow(rules, vmin=0, vmax=0, cmap=cmap)
-    for i in range(10):
-        for j in range(10):
-            ax.text(i, j, str(rules[i][j]), ha="center", va="center", color="white", fontsize=15)
-
-    plt.savefig('./visualizations/{}_rules.png'.format(name))
-    plt.close()
